@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>펭귄 점프</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #dff1ff;
+    color: #12304a;
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  #app {
+    width: 100%;
+    max-width: 560px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* 점수·목숨 */
+  #hud {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .hud-box {
+    background: #fff;
+    border-radius: 14px;
+    padding: 6px 12px;
+    box-shadow: 0 2px 0 #b8d8f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 52px;
+  }
+  .hud-label { font-size: 15px; font-weight: 700; color: #4a7193; }
+  #score { font-size: 32px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  #score small { font-size: 16px; color: #4a7193; font-weight: 700; }
+  #lives { display: flex; gap: 6px; }
+  .heart {
+    position: relative;
+    width: 22px;
+    height: 20px;
+  }
+  .heart::before, .heart::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 12px;
+    height: 19px;
+    background: #ff4d6d;
+    border-radius: 12px 12px 0 0;
+  }
+  .heart::before { left: 11px; transform: rotate(-45deg); transform-origin: 0 100%; }
+  .heart::after  { left: -1px; transform: rotate(45deg);  transform-origin: 100% 100%; }
+  .heart.lost::before, .heart.lost::after { background: #c9d6e2; }
+
+  /* 게임 화면 */
+  #stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 8 / 5;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #bfe3ff;
+    box-shadow: 0 4px 0 #9cc7e6;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+  }
+  #canvas { display: block; width: 100%; height: 100%; }
+
+  /* 버튼 */
+  button {
+    font: inherit;
+    font-weight: 800;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  #controls { display: flex; gap: 10px; }
+  #jumpBtn {
+    flex: 1;
+    min-height: 72px;
+    font-size: 28px;
+    color: #fff;
+    background: #2f80ed;
+    box-shadow: 0 5px 0 #1b5bb3;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #jumpBtn:active, #jumpBtn.pressed { transform: translateY(3px); box-shadow: 0 2px 0 #1b5bb3; }
+  .small-btn {
+    min-height: 52px;
+    padding: 0 14px;
+    font-size: 16px;
+    background: #fff;
+    color: #12304a;
+    box-shadow: 0 2px 0 #b8d8f0;
+  }
+  .small-btn:disabled { color: #8aa3b8; cursor: default; }
+  .big-btn {
+    min-height: 64px;
+    min-width: 200px;
+    padding: 0 28px;
+    font-size: 26px;
+    color: #fff;
+    background: #ff7a29;
+    box-shadow: 0 5px 0 #c9541a;
+  }
+  .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c9541a; }
+  .help { margin: 0; text-align: center; font-size: 15px; color: #4a7193; }
+
+  /* 겹쳐 보이는 화면들 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .hidden { display: none !important; }
+  #startScreen { background: #dff1ff; }
+  #poster {
+    display: block;
+    max-width: 100%;
+    max-height: 62vh;
+    border-radius: 16px;
+    box-shadow: 0 4px 0 #9cc7e6;
+  }
+  #titleFallback {
+    text-align: center;
+  }
+  #titleFallback h1 { margin: 0 0 6px; font-size: 44px; }
+  #titleFallback p { margin: 0; font-size: 18px; color: #4a7193; }
+  #overScreen { background: rgba(10, 30, 50, 0.72); color: #fff; text-align: center; }
+  #overScreen h2, #endPanel h2 { margin: 0; font-size: 44px; }
+  #overScreen p, #endPanel p { margin: 0; font-size: 22px; }
+  #endScreen { background: #000; color: #fff; text-align: center; z-index: 20; }
+  #endVideo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+  }
+  #endPanel {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 20px;
+    border-radius: 18px;
+    background: rgba(0, 0, 0, 0.55);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="hud-box">
+      <span class="hud-label">점수</span>
+      <span id="score">0<small> / 300</small></span>
+    </div>
+    <div class="hud-box">
+      <span class="hud-label">목숨</span>
+      <span id="lives"></span>
+    </div>
+    <button id="musicBtn" class="small-btn" type="button">음악 끄기</button>
+  </div>
+
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="controls">
+    <button id="jumpBtn" type="button">점프!</button>
+  </div>
+  <p class="help">스페이스 · ↑ 키, 점프 버튼, 게임 화면 탭 모두 점프예요.</p>
+</div>
+
+<!-- 시작 화면 -->
+<div id="startScreen" class="overlay">
+  <img id="poster" alt="펭귄 점프 포스터">
+  <div id="titleFallback" class="hidden">
+    <h1>펭귄 점프</h1>
+    <p>눈덩이를 뛰어넘어 300점을 모아요!</p>
+  </div>
+  <button id="startBtn" class="big-btn" type="button">시작하기</button>
+</div>
+
+<!-- 게임 오버 -->
+<div id="overScreen" class="overlay hidden">
+  <h2>게임 오버</h2>
+  <p id="overScore">0점</p>
+  <button id="retryOverBtn" class="big-btn" type="button">다시 하기</button>
+</div>
+
+<!-- 클리어 영상 -->
+<div id="endScreen" class="overlay hidden">
+  <video id="endVideo" playsinline preload="auto"></video>
+  <div id="endPanel" class="hidden">
+    <h2>클리어!</h2>
+    <p>300점 달성! 잘했어요!</p>
+    <button id="retryEndBtn" class="big-btn" type="button">다시 하기</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ===== 설정 (쉽게) =====
+  var W = 480, H = 300;           // 논리 화면 크기
+  var GROUND_Y = 250;             // 땅 높이
+  var SPEED = 170;                // 흐르는 속도 (px/초)
+  var GRAVITY = 1700;
+  var JUMP_V = 640;               // 점프 힘 (높이 약 120px, 체공 약 0.75초)
+  var GAP_MIN = 1.9, GAP_MAX = 2.9; // 눈덩이 간격 (초)
+  var POINTS_PER_SEC = 20;
+  var CLEAR_SCORE = 300;
+  var MAX_LIVES = 5;
+  var INVINCIBLE_TIME = 1.5;
+
+  // ===== 요소 =====
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d");
+  var stage = document.getElementById("stage");
+  var scoreEl = document.getElementById("score");
+  var livesEl = document.getElementById("lives");
+  var musicBtn = document.getElementById("musicBtn");
+  var jumpBtn = document.getElementById("jumpBtn");
+  var startScreen = document.getElementById("startScreen");
+  var startBtn = document.getElementById("startBtn");
+  var poster = document.getElementById("poster");
+  var titleFallback = document.getElementById("titleFallback");
+  var overScreen = document.getElementById("overScreen");
+  var overScore = document.getElementById("overScore");
+  var retryOverBtn = document.getElementById("retryOverBtn");
+  var endScreen = document.getElementById("endScreen");
+  var endVideo = document.getElementById("endVideo");
+  var endPanel = document.getElementById("endPanel");
+  var retryEndBtn = document.getElementById("retryEndBtn");
+
+  // ===== 미디어: 리스너를 먼저 달고 src를 넣는다 =====
+  poster.addEventListener("error", function () {
+    poster.classList.add("hidden");
+    titleFallback.classList.remove("hidden");
+  });
+  poster.src = "poster.png";
+
+  var music = new Audio();
+  var musicOn = true;
+  var musicFailed = false;
+  music.loop = true;
+  music.preload = "auto";
+  music.addEventListener("error", function () {
+    musicFailed = true;
+    updateMusicBtn();
+  });
+  music.src = "music.mp3";
+
+  var videoFailed = false;
+  endVideo.addEventListener("error", function () {
+    videoFailed = true;
+    if (state === "clear") showEndPanel();
+  });
+  endVideo.addEventListener("ended", showEndPanel);
+  endVideo.src = "ending.mp4";
+
+  function updateMusicBtn() {
+    if (musicFailed) {
+      musicBtn.textContent = "음악 없음";
+      musicBtn.disabled = true;
+    } else {
+      musicBtn.textContent = musicOn ? "음악 끄기" : "음악 켜기";
+    }
+  }
+
+  function playMusic() {
+    if (!musicOn || musicFailed) return;
+    try {
+      var p = music.play();
+      if (p && p.catch) p.catch(function () { /* 재생이 막히면 음악만 건너뜀 */ });
+    } catch (e) { /* 무시 */ }
+  }
+
+  function pauseMusic() {
+    try { music.pause(); } catch (e) { /* 무시 */ }
+  }
+
+  musicBtn.addEventListener("click", function () {
+    if (musicFailed) return;
+    musicOn = !musicOn;
+    updateMusicBtn();
+    if (musicOn && state === "play") playMusic();
+    else pauseMusic();
+    musicBtn.blur();
+  });
+
+  // ===== 캔버스 크기 (선명하게) =====
+  var scale = 1;
+  function resize() {
+    var rect = stage.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    scale = canvas.width / W;
+    draw();
+  }
+  window.addEventListener("resize", resize);
+
+  // ===== 게임 상태 =====
+  var state = "start"; // start, play, over, clear
+  var penguin, snowballs, elapsed, score, lives, invincible, nextSpawn, scroll, hitFlash;
+  var flakes = [];
+  for (var i = 0; i < 40; i++) {
+    flakes.push({ x: Math.random() * W, y: Math.random() * H, r: 1 + Math.random() * 2, s: 15 + Math.random() * 25 });
+  }
+
+  function reset() {
+    penguin = { x: 70, y: GROUND_Y, vy: 0, w: 40, h: 48, onGround: true, run: 0 };
+    snowballs = [];
+    elapsed = 0;
+    score = 0;
+    lives = MAX_LIVES;
+    invincible = 0;
+    nextSpawn = 1.6;
+    scroll = 0;
+    hitFlash = 0;
+    updateHud();
+  }
+
+  function updateHud() {
+    scoreEl.firstChild.nodeValue = String(score);
+    var html = "";
+    for (var i = 0; i < MAX_LIVES; i++) {
+      html += '<span class="heart' + (i < lives ? "" : " lost") + '"></span>';
+    }
+    livesEl.innerHTML = html;
+  }
+
+  function startGame() {
+    reset();
+    state = "play";
+    startScreen.classList.add("hidden");
+    overScreen.classList.add("hidden");
+    endScreen.classList.add("hidden");
+    endPanel.classList.add("hidden");
+    try { endVideo.pause(); } catch (e) { /* 무시 */ }
+    endVideo.controls = false;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    playMusic();
+    lastTime = performance.now();
+  }
+
+  function gameOver() {
+    state = "over";
+    overScore.textContent = score + "점";
+    overScreen.classList.remove("hidden");
+    retryOverBtn.focus();
+  }
+
+  function clearGame() {
+    state = "clear";
+    score = CLEAR_SCORE;
+    updateHud();
+    pauseMusic();
+    endScreen.classList.remove("hidden");
+    endPanel.classList.add("hidden");
+    if (videoFailed) {
+      showEndPanel();
+      return;
+    }
+    endVideo.classList.remove("hidden");
+    try {
+      endVideo.currentTime = 0;
+    } catch (e) { /* 무시 */ }
+    try {
+      var p = endVideo.play();
+      if (p && p.catch) {
+        p.catch(function () {
+          // 재생이 막히면 컨트롤을 보여 주고 다시 하기 버튼을 띄움
+          if (!videoFailed) endVideo.controls = true;
+          showEndPanel();
+        });
+      }
+    } catch (e) {
+      showEndPanel();
+    }
+  }
+
+  function showEndPanel() {
+    if (state !== "clear") return;
+    if (videoFailed) endVideo.classList.add("hidden");
+    endPanel.classList.remove("hidden");
+    retryEndBtn.focus();
+  }
+
+  // ===== 점프 =====
+  function jump() {
+    if (state !== "play") return;
+    if (penguin.onGround) {
+      penguin.vy = -JUMP_V;
+      penguin.onGround = false;
+    }
+  }
+
+  document.addEventListener("keydown", function (e) {
+    var isJumpKey = e.code === "Space" || e.key === " " || e.key === "ArrowUp" || e.key === "Up";
+    if (!isJumpKey) return;
+    if (state === "play") {
+      e.preventDefault();
+      if (!e.repeat) jump();
+    }
+  });
+  document.addEventListener("keyup", function (e) {
+    if (state === "play" && (e.code === "Space" || e.key === " ")) e.preventDefault();
+  });
+
+  stage.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    jump();
+  });
+  jumpBtn.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    jumpBtn.classList.add("pressed");
+    jump();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(function (t) {
+    jumpBtn.addEventListener(t, function () { jumpBtn.classList.remove("pressed"); });
+  });
+  // 키보드로 버튼을 눌렀을 때(Enter)도 점프
+  jumpBtn.addEventListener("click", function (e) {
+    if (e.detail === 0) jump();
+  });
+
+  startBtn.addEventListener("click", startGame);
+  retryOverBtn.addEventListener("click", startGame);
+  retryEndBtn.addEventListener("click", startGame);
+
+  // ===== 갱신 =====
+  function spawnSnowball() {
+    var r = 15 + Math.random() * 5;
+    snowballs.push({ x: W + r + 10, r: r, rot: 0 });
+  }
+
+  function circleRectHit(cx, cy, cr, rx, ry, rw, rh) {
+    var nx = Math.max(rx, Math.min(cx, rx + rw));
+    var ny = Math.max(ry, Math.min(cy, ry + rh));
+    var dx = cx - nx, dy = cy - ny;
+    return dx * dx + dy * dy < cr * cr;
+  }
+
+  function update(dt) {
+    scroll += SPEED * dt;
+    for (var f = 0; f < flakes.length; f++) {
+      var fl = flakes[f];
+      fl.y += fl.s * dt;
+      fl.x -= SPEED * 0.25 * dt;
+      if (fl.y > H) { fl.y = -4; fl.x = Math.random() * W; }
+      if (fl.x < -4) fl.x = W + 4;
+    }
+    if (state !== "play") return;
+
+    elapsed += dt;
+    var newScore = Math.min(CLEAR_SCORE, Math.floor(elapsed * POINTS_PER_SEC));
+    if (newScore !== score) { score = newScore; updateHud(); }
+    if (score >= CLEAR_SCORE) { clearGame(); return; }
+
+    // 펭귄
+    var p = penguin;
+    if (!p.onGround) {
+      p.vy += GRAVITY * dt;
+      p.y += p.vy * dt;
+      if (p.y >= GROUND_Y) { p.y = GROUND_Y; p.vy = 0; p.onGround = true; }
+    }
+    p.run += dt * 10;
+
+    // 눈덩이
+    nextSpawn -= dt;
+    if (nextSpawn <= 0) {
+      spawnSnowball();
+      nextSpawn = GAP_MIN + Math.random() * (GAP_MAX - GAP_MIN);
+    }
+    for (var i = snowballs.length - 1; i >= 0; i--) {
+      var s = snowballs[i];
+      s.x -= SPEED * dt;
+      s.rot -= (SPEED * dt) / s.r;
+      if (s.x < -s.r - 10) snowballs.splice(i, 1);
+    }
+
+    if (invincible > 0) invincible -= dt;
+    if (hitFlash > 0) hitFlash -= dt;
+
+    // 부딪힘 판정: 그림보다 작게
+    if (invincible <= 0) {
+      var hx = p.x - p.w / 2 + 10, hy = p.y - p.h + 12, hw = p.w - 20, hh = p.h - 16;
+      for (var j = 0; j < snowballs.length; j++) {
+        var b = snowballs[j];
+        if (circleRectHit(b.x, GROUND_Y - b.r, b.r * 0.65, hx, hy, hw, hh)) {
+          lives -= 1;
+          invincible = INVINCIBLE_TIME;
+          hitFlash = 0.25;
+          updateHud();
+          if (lives <= 0) { gameOver(); }
+          break;
+        }
+      }
+    }
+  }
+
+  // ===== 그리기 =====
+  function draw() {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+    // 하늘
+    var sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#8fd0ff");
+    sky.addColorStop(1, "#e8f6ff");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // 해
+    ctx.fillStyle = "#fff6c2";
+    ctx.beginPath();
+    ctx.arc(400, 55, 26, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 먼 산 (천천히 흐름)
+    drawMountains(scroll * 0.15, 175, 70, "#cfe6f7", 160);
+    drawMountains(scroll * 0.35, 205, 50, "#b4d6ef", 120);
+
+    // 땅
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    ctx.fillStyle = "#d6ebfa";
+    ctx.fillRect(0, GROUND_Y, W, 4);
+    ctx.fillStyle = "#cfe3f3";
+    var off = scroll % 60;
+    for (var x = -off; x < W; x += 60) {
+      ctx.fillRect(x, GROUND_Y + 18, 26, 4);
+      ctx.fillRect(x + 30, GROUND_Y + 34, 18, 4);
+    }
+
+    // 눈덩이
+    if (snowballs) {
+      for (var i = 0; i < snowballs.length; i++) drawSnowball(snowballs[i]);
+    }
+
+    // 펭귄 (무적일 때 깜빡임)
+    if (penguin) {
+      var visible = invincible <= 0 || Math.floor(invincible * 12) % 2 === 0;
+      if (visible) drawPenguin(penguin);
+    }
+
+    // 내리는 눈
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (var f = 0; f < flakes.length; f++) {
+      ctx.beginPath();
+      ctx.arc(flakes[f].x, flakes[f].y, flakes[f].r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 맞았을 때 빨간 번쩍임
+    if (hitFlash > 0) {
+      ctx.fillStyle = "rgba(255,60,80," + (hitFlash * 1.2).toFixed(2) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function drawMountains(offset, baseY, height, color, width) {
+    ctx.fillStyle = color;
+    var o = offset % width;
+    ctx.beginPath();
+    ctx.moveTo(-o - width, GROUND_Y);
+    for (var x = -o - width; x < W + width; x += width) {
+      ctx.lineTo(x + width / 2, baseY - height + (Math.abs(Math.round(x / width)) % 2) * 18);
+      ctx.lineTo(x + width, GROUND_Y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawSnowball(s) {
+    var cy = GROUND_Y - s.r;
+    // 그림자
+    ctx.fillStyle = "rgba(90,130,170,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(s.x, GROUND_Y + 2, s.r * 0.9, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 몸통
+    var g = ctx.createRadialGradient(s.x - s.r * 0.35, cy - s.r * 0.35, s.r * 0.2, s.x, cy, s.r);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(1, "#b9d9f2");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(s.x, cy, s.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8db8da";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // 굴러가는 무늬
+    ctx.save();
+    ctx.translate(s.x, cy);
+    ctx.rotate(s.rot);
+    ctx.fillStyle = "#cfe5f6";
+    ctx.beginPath(); ctx.arc(s.r * 0.45, 0, s.r * 0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-s.r * 0.3, s.r * 0.35, s.r * 0.13, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-s.r * 0.2, -s.r * 0.45, s.r * 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPenguin(p) {
+    var x = p.x, by = p.y; // by = 발바닥 높이
+    var step = p.onGround && state === "play" ? Math.sin(p.run) : 0;
+    var bob = p.onGround ? Math.abs(step) * 2 : 0;
+    var top = by - p.h - bob;
+
+    // 그림자
+    var shadowScale = Math.max(0.4, 1 - (GROUND_Y - p.y) / 160);
+    ctx.fillStyle = "rgba(90,130,170,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(x, GROUND_Y + 2, 18 * shadowScale, 4 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 발
+    ctx.fillStyle = "#ff9a1f";
+    ctx.beginPath();
+    ctx.ellipse(x - 8 + step * 4, by - 3, 8, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 8 - step * 4, by - 3, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 몸통
+    ctx.fillStyle = "#1d2a3a";
+    ctx.beginPath();
+    ctx.ellipse(x, top + p.h * 0.55, p.w / 2, p.h * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 날개
+    var flap = p.onGround ? step * 0.3 : -0.9;
+    ctx.save();
+    ctx.translate(x - p.w / 2 + 3, top + p.h * 0.45);
+    ctx.rotate(0.35 + flap);
+    ctx.beginPath();
+    ctx.ellipse(0, 10, 5, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(x + p.w / 2 - 3, top + p.h * 0.45);
+    ctx.rotate(-0.35 - flap);
+    ctx.beginPath();
+    ctx.ellipse(0, 10, 5, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 배
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(x + 3, top + p.h * 0.62, p.w * 0.32, p.h * 0.36, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 얼굴 흰 부분
+    ctx.beginPath();
+    ctx.ellipse(x + 6, top + p.h * 0.28, 11, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 눈
+    ctx.fillStyle = "#1d2a3a";
+    ctx.beginPath();
+    ctx.arc(x + 9, top + p.h * 0.25, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(x + 10, top + p.h * 0.23, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 볼
+    ctx.fillStyle = "rgba(255,130,150,0.6)";
+    ctx.beginPath();
+    ctx.arc(x + 4, top + p.h * 0.35, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 부리
+    ctx.fillStyle = "#ff9a1f";
+    ctx.beginPath();
+    ctx.moveTo(x + 14, top + p.h * 0.29);
+    ctx.lineTo(x + 25, top + p.h * 0.34);
+    ctx.lineTo(x + 14, top + p.h * 0.39);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ===== 반복 =====
+  var lastTime = performance.now();
+  function loop(now) {
+    var dt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (dt > 0.05) dt = 0.05; // 탭 전환 등으로 시간이 튀지 않게
+    if (dt < 0) dt = 0;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  reset();
+  updateMusicBtn();
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
